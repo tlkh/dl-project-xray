@@ -19,6 +19,7 @@ class XRayDataset(torch.utils.data.Dataset):
         self.impressions = []
         self.vocab = []
         self.classes = get_categories()
+        self.num_classes = len(self.classes)
         # build uid -> image mapping
         self.uid_to_images = {}
         for line in file_lines:
@@ -56,28 +57,34 @@ class XRayDataset(torch.utils.data.Dataset):
         image_path, finding, impression = self.frontal_images[index], self.findings[index], self.impressions[index]
         #image = Image.open(image_path).convert('L')
         image = Image.open(image_path).convert('RGB')
+        class_label = self.problems[index]
+        one_hot = [0 for _ in range(self.num_classes)]
+        for p in class_label:
+            one_hot[self.classes.index(p)-1] += 1
+        class_label = torch.from_numpy(np.asarray(one_hot, dtype="float"))
         if self.transform:
             image = self.transform(image)
         impression = torch.from_numpy(self.tokenizer.encode(impression))
         if self.return_finding:
             finding = torch.from_numpy(self.tokenizer.encode(finding))
-            return image, finding, impression
+            return image, class_label, finding, impression
         else:
-            return image, impression
+            return image, class_label, impression
     
 def collate_fn(data):
     # Sort a data list by caption length (descending order).
     data.sort(key=lambda x: len(x[1]), reverse=True)
-    images, captions = zip(*data)
+    images, class_labels, captions = zip(*data)
     # Merge images (from tuple of 3D tensor to 4D tensor).
     images = torch.stack(images, 0)
+    class_labels = torch.stack(class_labels, 0)
     # Merge captions (from tuple of 1D tensor to 2D tensor).
     lengths = [len(cap) for cap in captions]
     targets = torch.zeros(len(captions), max(lengths)).long()
     for i, cap in enumerate(captions):
         end = lengths[i]
         targets[i, :end] = cap[:end]        
-    return images, targets, lengths
+    return images, class_labels, targets, lengths
 
 class Tokenizer(object):
     def __init__(self, char_set):

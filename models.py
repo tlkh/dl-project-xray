@@ -39,7 +39,7 @@ class DecoderRNN(torch.nn.Module):
         embeddings = self.embed(captions)
         embeddings = self.norm(embeddings)
         embeddings = torch.cat((features.unsqueeze(1), embeddings), 1)
-        packed = pack_padded_sequence(embeddings, lengths, batch_first=True) 
+        packed = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False) 
         hiddens, _ = self.lstm(packed)
         rnn_out = self.dropout(hiddens[0])
         outputs = self.linear(rnn_out)
