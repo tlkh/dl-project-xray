@@ -4,53 +4,55 @@ from PIL import Image
 import torch
 
 class XRayDataset(torch.utils.data.Dataset):
-    def __init__(self, transform=None, return_finding=False,
+    def __init__(self, reports, transform=None, return_finding=False,
                  images_dir="./images/images_normalized/",
-                 file_list="./indiana_projections.csv",
-                 reports_list="./indiana_reports.csv"):
+                 file_list="./indiana_projections.csv"):
         self.transform = transform
         self.return_finding = return_finding
         if images_dir[-1] != "/": images_dir = images_dir + "/"
         file_lines = [line.rstrip("\n") for line in open(file_list)][1:]
-        reports_lines = [line.rstrip("\n") for line in open(reports_list)][1:]
-        reports = {}
-        for line in reports_lines:
-            line = line.split(",")
-            uid = str(int(line[0]))
-            finding, impression = line[-2].strip().lower(), line[-1].strip().lower()
-            reports[uid] = (finding, impression)
-        print("Number of reports:", len(reports_lines))
-        self.images = []
+        self.reports = reports
+        self.frontal_images = []
+        self.lateral_images = []
+        self.problems = []
         self.findings = []
         self.impressions = []
         self.vocab = []
-        skip = 0
+        # build uid -> image mapping
+        self.uid_to_images = {}
         for line in file_lines:
             line = line.split(",")
-            if line[-1] == "Frontal":
-                image_path = images_dir+line[1]
-                uid = str(int(line[0]))
-                if os.path.isfile(image_path):
-                    report = reports[uid]
-                    finding, impression = report[0], report[1]
-                    if len(finding) > 1 and len(impression) > 1:
-                        self.images.append(image_path)
-                        self.vocab += list(set(finding + impression))
-                        self.findings.append(finding)
-                        self.impressions.append(impression)
-                else:
-                    skip += 1
-            else:
-                skip += 1
+            image_path = images_dir+line[1]
+            uid = str(int(line[0]))
+            if os.path.isfile(image_path):
+                try: self.uid_to_images[uid]
+                except: self.uid_to_images[uid] = [None, None]
+                if line[-1] == "Frontal":
+                    self.uid_to_images[uid][0] = image_path
+                elif line[-1] == "Lateral":
+                    self.uid_to_images[uid][1] = image_path
+        # build image -> report mapping
+        for uid in list(self.reports.keys()):
+            frontal_img_path, lateral_img_path = self.uid_to_images[uid]
+            if frontal_img_path and lateral_img_path:
+                problem, finding, impression = self.reports[uid]
+                finding, impression = finding.strip().lower(), impression.strip().lower()
+                new_vocab = list(set(finding+impression))
+                self.frontal_images.append(frontal_img_path)
+                self.lateral_images.append(lateral_img_path)
+                self.problems.append(problem)
+                self.findings.append(finding)
+                self.impressions.append(impression)
+                self.vocab += new_vocab
+        
         self.vocab = list(set(self.vocab))
         self.tokenizer = Tokenizer(char_set=self.vocab)
-        print("Skipped:", skip, "images")
         
     def __len__(self):
-        return len(self.images)
+        return len(self.frontal_images)
 
     def __getitem__(self, index):
-        image_path, finding, impression = self.images[index], self.findings[index], self.impressions[index]
+        image_path, finding, impression = self.frontal_images[index], self.findings[index], self.impressions[index]
         #image = Image.open(image_path).convert('L')
         image = Image.open(image_path).convert('RGB')
         if self.transform:
