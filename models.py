@@ -10,6 +10,7 @@ class EncoderCNN(torch.nn.Module):
         resnet = models.resnet18(pretrained=True)
         modules = list(resnet.children())[:-1]      # delete the last fc layer.
         self.resnet = torch.nn.Sequential(*modules)
+        self.dropout = torch.nn.Dropout(0.1)
         self.feature_linear = torch.nn.Linear(resnet.fc.in_features, embed_size)
         self.classfy_linear = torch.nn.Linear(resnet.fc.in_features, num_classes)
         self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
@@ -18,6 +19,7 @@ class EncoderCNN(torch.nn.Module):
         """Extract feature vectors from input images."""
         resnet_output = self.resnet(images)
         resnet_output = resnet_output.reshape(resnet_output.size(0), -1)
+        resnet_output = self.dropout(resnet_output)
         features = self.norm(self.feature_linear(resnet_output))
         logits = self.classfy_linear(resnet_output)
         return logits, features
@@ -27,23 +29,30 @@ class DecoderRNN(torch.nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size, num_layers, max_seq_length=64):
         """Set the hyper-parameters and build the layers."""
         super(DecoderRNN, self).__init__()
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
         self.embed = torch.nn.Embedding(vocab_size, embed_size)
-        self.lstm = torch.nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)
-        self.linear = torch.nn.Linear(hidden_size, vocab_size)
+        self.lstm = torch.nn.LSTM(embed_size, self.hidden_size, self.num_layers, batch_first=True)
+        self.linear = torch.nn.Linear(self.hidden_size, vocab_size)
         self.dropout = torch.nn.Dropout(0.1)
         self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
         self.max_seg_length = max_seq_length
         
-    def forward(self, features, captions, lengths):
+    def forward(self, features, captions, lengths, prev_state):
         """Decode image feature vectors and generates captions."""
         embeddings = self.embed(captions)
         embeddings = self.norm(embeddings)
         embeddings = torch.cat((features.unsqueeze(1), embeddings), 1)
+        embeddings = self.dropout(embeddings)
         packed = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False) 
-        hiddens, _ = self.lstm(packed)
+        hiddens, state = self.lstm(packed, prev_state)
         rnn_out = self.dropout(hiddens[0])
         outputs = self.linear(rnn_out)
-        return outputs
+        return outputs, state
+    
+    def zero_state(self, batch_size):
+        return (torch.zeros(self.num_layers, batch_size, self.hidden_size),
+                torch.zeros(self.num_layers, batch_size, self.hidden_size))
     
     def sample(self, features, states=None):
         """Generate captions for given image features using greedy search."""
