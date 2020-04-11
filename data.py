@@ -18,6 +18,7 @@ class XRayDataset(torch.utils.data.Dataset):
         self.findings = []
         self.impressions = []
         self.vocab = []
+        self.classes = get_categories()
         # build uid -> image mapping
         self.uid_to_images = {}
         for line in file_lines:

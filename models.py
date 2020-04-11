@@ -1,44 +1,44 @@
 import torch
-import torch.nn as nn
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
 
 
-class EncoderCNN(nn.Module):
-    def __init__(self, embed_size):
-        """Load the pretrained ResNet-152 and replace top fc layer."""
+class EncoderCNN(torch.nn.Module):
+    def __init__(self, embed_size, num_classes):
+        """Load the pretrained ResNet and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        resnet = models.wide_resnet50_2(pretrained=True)
+        resnet = models.resnet18(pretrained=True)
         modules = list(resnet.children())[:-1]      # delete the last fc layer.
-        self.resnet = nn.Sequential(*modules)
-        self.linear = nn.Linear(resnet.fc.in_features, embed_size)
-        self.bn = nn.BatchNorm1d(embed_size, momentum=0.01)
+        self.resnet = torch.nn.Sequential(*modules)
+        self.feature_linear = torch.nn.Linear(resnet.fc.in_features, embed_size)
+        self.classfy_linear = torch.nn.Linear(resnet.fc.in_features, num_classes)
+        self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
         
     def forward(self, images):
         """Extract feature vectors from input images."""
-        with torch.no_grad():
-            features = self.resnet(images)
-        features = features.reshape(features.size(0), -1)
-        features = self.bn(self.linear(features))
-        return features
+        resnet_output = self.resnet(images)
+        resnet_output = resnet_output.reshape(resnet_output.size(0), -1)
+        features = self.norm(self.feature_linear(resnet_output))
+        logits = self.classfy_linear(resnet_output)
+        return logits, features
 
 
-class DecoderRNN(nn.Module):
+class DecoderRNN(torch.nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size, num_layers, max_seq_length=64):
         """Set the hyper-parameters and build the layers."""
         super(DecoderRNN, self).__init__()
-        self.embed = nn.Embedding(vocab_size, embed_size)
-        self.lstm = nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)
-        self.linear = nn.Linear(hidden_size, vocab_size)
-        self.dropout = nn.Dropout(0.01)
-        self.layer_norm = nn.LayerNorm(embed_size, eps=1e-06)
+        self.embed = torch.nn.Embedding(vocab_size, embed_size)
+        self.lstm = torch.nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)
+        self.linear = torch.nn.Linear(hidden_size, vocab_size)
+        self.dropout = torch.nn.Dropout(0.1)
+        self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
         self.max_seg_length = max_seq_length
         
     def forward(self, features, captions, lengths):
         """Decode image feature vectors and generates captions."""
         embeddings = self.embed(captions)
+        embeddings = self.norm(embeddings)
         embeddings = torch.cat((features.unsqueeze(1), embeddings), 1)
-        embeddings = self.layer_norm(embeddings)
         packed = pack_padded_sequence(embeddings, lengths, batch_first=True) 
         hiddens, _ = self.lstm(packed)
         rnn_out = self.dropout(hiddens[0])
