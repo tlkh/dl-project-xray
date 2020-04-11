@@ -91,4 +91,7 @@ class Tokenizer(object):
         return self.char_set
     
     
-    
+def get_categories():
+    return [
+        'airspace disease', 'aorta', 'aorta, thoracic', 'arthritis', 'atherosclerosis', 'bone diseases, metabolic', 'calcified granuloma', 'calcinosis', 'cardiac shadow', 'cardiomegaly', 'catheters, indwelling', 'cicatrix', 'consolidation', 'costophrenic angle', 'deformity', 'density', 'diaphragm', 'diaphragmatic eventration', 'emphysema', 'fractures, bone', 'granuloma', 'granulomatous disease', 'hernia, hiatal', 'implanted medical device', 'infiltrate', 'kyphosis', 'lung', 'markings', 'no indexing', 'nodule', 'normal', 'opacity', 'osteophyte', 'other', 'pleural effusion', 'pneumonia', 'pulmonary atelectasis', 'pulmonary congestion', 'pulmonary disease, chronic obstructive', 'pulmonary edema', 'pulmonary emphysema', 'scoliosis', 'spine', 'spondylosis', 'surgical instruments', 'technical quality of image unsatisfactory ', 'thickening', 'thoracic vertebrae'
+    ]
