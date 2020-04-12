@@ -2,11 +2,11 @@ import os
 import numpy as np
 from PIL import Image
 import torch
+from config import config
 
 class XRayDataset(torch.utils.data.Dataset):
     def __init__(self, reports, transform=None, return_finding=False,
-                 images_dir="./images/images_normalized/",
-                 file_list="./indiana_projections.csv"):
+                 images_dir=config.image_dir, file_list=config.file_list):
         self.transform = transform
         self.return_finding = return_finding
         if images_dir[-1] != "/": images_dir = images_dir + "/"
