@@ -1,6 +1,7 @@
 *.zip
 **/images/
 vectors/*
+save/*
 
 
 # Byte-compiled / optimized / DLL files
