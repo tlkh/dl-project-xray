@@ -4,6 +4,9 @@ from PIL import Image
 import torch
 from config import config
 import nltk
+from pathlib import Path
+nltk.download("punkt")
+
 
 class XRayDataset(torch.utils.data.Dataset):
     def __init__(self, reports, transform=None, return_finding=False,
@@ -34,6 +37,8 @@ class XRayDataset(torch.utils.data.Dataset):
                     self.uid_to_images[uid][0] = image_path
                 elif line[-1] == "Lateral":
                     self.uid_to_images[uid][1] = image_path
+            else:
+                print(f"Not found: {os.path.abspath(image_path)}")
         # build image -> report mapping
         self.tokenizer = Lang({config.UNK_idx: "UNK", config.PAD_idx: "PAD", config.EOS_idx: "EOS", config.SOS_idx: "SOS"})
         for uid in list(self.reports.keys()):
@@ -48,13 +53,13 @@ class XRayDataset(torch.utils.data.Dataset):
                 self.problems.append(problem)
                 self.findings.append(finding)
                 self.impressions.append(impression)
-        
+
         self.vocab = self.tokenizer.n_words
-        
+
     def __len__(self):
         return len(self.frontal_images)
 
-    def __getitem__(self, index):
+    def get(self, index, transform=True):
         image_path, finding, impression = self.frontal_images[index], self.findings[index], self.impressions[index]
         #image = Image.open(image_path).convert('L')
         image = Image.open(image_path).convert('RGB')
@@ -63,19 +68,23 @@ class XRayDataset(torch.utils.data.Dataset):
         for p in class_label:
             one_hot[self.classes.index(p)-1] += 1
         class_label = torch.from_numpy(np.asarray(one_hot, dtype="float"))
-        if self.transform:
+        if transform and self.transform:
             image = self.transform(image)
 
-        # impression 
+        # impression
         impression = torch.from_numpy(self.tokenizer.encode(impression))
-       
+
         # finding
         if self.return_finding:
             finding = torch.from_numpy(self.tokenizer.encode(finding))
             return image, class_label, finding, impression
         else:
             return image, class_label, impression
-    
+
+    def __getitem__(self, index):
+        return self.get(index, transform=True)
+
+
 def collate_fn(data):
     # Sort a data list by caption length (descending order).
     data.sort(key=lambda x: len(x[1]), reverse=True)
@@ -85,12 +94,12 @@ def collate_fn(data):
     class_labels = torch.stack(class_labels, 0)
     # Merge captions (from tuple of 1D tensor to 2D tensor).
     lengths = [len(cap) for cap in captions]
-    
+
     ## target must be of zero padding, because we assume the padding have 0 idx
     targets = torch.zeros(len(captions), max(lengths)).long()
     for i, cap in enumerate(captions):
         end = lengths[i]
-        targets[i, :end] = cap[:end]        
+        targets[i, :end] = cap[:end]
     return images, class_labels, targets, lengths
 
 # class Tokenizer(object):
@@ -104,15 +113,15 @@ def collate_fn(data):
 #         return "".join([self.char_set[i] for i in sequence]).strip()
 #     def get_vocab(self):
 #         return self.char_set
-    
-   
+
+
 class Lang:
     def __init__(self, init_index2word):
         self.word2index = {str(v): int(k) for k, v in init_index2word.items()}
         self.word2count = {str(v): 1 for k, v in init_index2word.items()}
-        self.index2word = init_index2word 
+        self.index2word = init_index2word
         self.n_words = len(init_index2word)  # Count default tokens
-      
+
     def index_words(self, sentence):
         for word in sentence:
             self.index_word(word.strip())
