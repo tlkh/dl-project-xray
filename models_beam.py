@@ -134,7 +134,7 @@ class DecoderRNN_Word(torch.nn.Module):
         hiddens, state = self.lstm(embeddings, prev_state)
         rnn_out = self.dropout(hiddens[0])
         outputs = self.linear(rnn_out)
-#         outputs = torch.log_softmax(outputs, dim=1)
+        outputs = torch.log_softmax(outputs, dim=1)
         return outputs, state
     
     def beam_decode(self, features, beam_width=10):
@@ -146,11 +146,9 @@ class DecoderRNN_Word(torch.nn.Module):
         decoded_batch = []
         for idx in range(1):
             decoder_hidden = self.zero_state(batch_size=1)
+#             decoder_hidden = None
             # Start with the start of the sentence token
             decoder_input = torch.LongTensor([[config.SOS_idx]]).to(config.device)
-
-            decoder_hidden = None
-            decoder_input = features.unsqueeze(1)
             
             # Number of sentence to generate
             endnodes = []
@@ -159,16 +157,17 @@ class DecoderRNN_Word(torch.nn.Module):
             # starting node -  hidden vector, previous node, word id, logp, length
             node = BeamSearchNode(decoder_hidden, None, decoder_input, 0, 1)
             nodes = PriorityQueue()
-
             # start the queue
-            nodes.put((-node.eval(), node))
+            assert type(-node.eval()) == float
+            assert type(node) == BeamSearchNode
+            nodes.put( (-node.eval(), node) )
             qsize = 1
 
             sos = True
             # start beam search
             while True:
                 # give up when decoding takes too long
-                if qsize > 2000: break
+                if qsize > 300: break
 
                 # fetch the best node
                 score, n = nodes.get()
@@ -184,8 +183,8 @@ class DecoderRNN_Word(torch.nn.Module):
                         else:
                             continue
 
-                length = torch.LongTensor([1]).to(config.device)
-                decoder_output, decoder_hidden = self.forward_sample(decoder_input, prev_state=decoder_hidden, sos=sos)
+                decoder_output, decoder_hidden = self.forward_sample(decoder_input if not sos else features.unsqueeze(1), 
+                                                                     prev_state=decoder_hidden, sos=sos)
                 sos=False
                 # PUT HERE REAL BEAM SEARCH OF TOP
                 log_prob, indexes = torch.topk(decoder_output, beam_width)
@@ -202,6 +201,8 @@ class DecoderRNN_Word(torch.nn.Module):
                 # put them into queue
                 for i in range(len(nextnodes)):
                     score, nn = nextnodes[i]
+                    assert type(score) == float
+                    assert type(nn) == BeamSearchNode
                     nodes.put((score, nn))
                     # increase qsize
                 qsize += len(nextnodes) - 1

@@ -63,7 +63,7 @@ def moses_multi_bleu(hypotheses, references, lowercase=False):
     if np.size(hypotheses) == 0:
         return np.float32(0.0)
 
-    multi_bleu_path = "multi-bleu.perl"
+    multi_bleu_path = os.path.join(os.getcwd(), "multi-bleu.perl")
     os.chmod(multi_bleu_path, 0o755)
 
 
@@ -119,3 +119,15 @@ class BeamSearchNode(object):
         reward = 0
         # Add here a function for shaping a reward
         return self.logp / float(self.leng - 1 + 1e-6) + alpha * reward
+    
+    def __lt__(self, other):
+        return -self.eval() < -other.eval()
+    
+    def __gt__(self, other):
+        return -self.eval() > -other.eval()
+    
+    
+def normalize_image(image):
+    image -= image.min()
+    image /= image.max()
+    return image
