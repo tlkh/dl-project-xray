@@ -61,7 +61,7 @@ class XRayDataset(torch.utils.data.Dataset):
         class_label = self.problems[index]
         one_hot = [0 for _ in range(self.num_classes)]
         for p in class_label:
-            one_hot[self.classes.index(p)-1] += 1
+            one_hot[self.classes.index(p)] += 1
         class_label = torch.from_numpy(np.asarray(one_hot, dtype="float"))
         if self.transform:
             image = self.transform(image)
@@ -105,7 +105,6 @@ def collate_fn(data):
 #     def get_vocab(self):
 #         return self.char_set
     
-   
 class Lang:
     def __init__(self, init_index2word):
         self.word2index = {str(v): int(k) for k, v in init_index2word.items()}
@@ -127,7 +126,7 @@ class Lang:
             self.word2count[word] += 1
 
     def encode(self, text):
-        return np.asarray([self.word2index[o] for o in text], dtype="int")
+        return np.asarray([config.SOS_idx] + [self.word2index[o] for o in text] + [config.EOS_idx], dtype="int")
 
     def decode(self, text):
         return " ".join([self.index2word[int(o)] for o in text])

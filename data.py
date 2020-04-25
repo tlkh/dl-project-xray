@@ -60,7 +60,7 @@ class XRayDataset(torch.utils.data.Dataset):
         class_label = self.problems[index]
         one_hot = [0 for _ in range(self.num_classes)]
         for p in class_label:
-            one_hot[self.classes.index(p)-1] += 1
+            one_hot[self.classes.index(p)] += 1
         class_label = torch.from_numpy(np.asarray(one_hot, dtype="float"))
         if self.transform:
             image = self.transform(image)
