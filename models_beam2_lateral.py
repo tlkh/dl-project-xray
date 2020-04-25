@@ -11,20 +11,35 @@ class EncoderCNN(torch.nn.Module):
     def __init__(self, embed_size, num_classes):
         """Load the pretrained ResNet and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        resnet = models.resnet18(pretrained=True)
-        modules = list(resnet.children())[:-1]      # delete the last fc layer.
-        self.resnet = torch.nn.Sequential(*modules)
-        self.dropout = torch.nn.Dropout(0.1)
-        self.feature_linear = torch.nn.Linear(resnet.fc.in_features, embed_size)
-        self.classfy_linear = torch.nn.Linear(resnet.fc.in_features, num_classes)
-        self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
-        self.norm2d = torch.nn.BatchNorm2d(3, eps=1e-06)
+        # Frontal
+        resnet_frontal = models.resnet18(pretrained=True)
+        modules_frontal = list(resnet_frontal.children())[:-1]      # delete the last fc layer.
+        self.resnet_frontal = torch.nn.Sequential(*modules_frontal)
+        # Lateral
+        resnet_lateral = models.resnet18(pretrained=True)
+        modules_lateral = list(resnet_lateral.children())[:-1]      # delete the last fc layer.
+        self.resnet_lateral = torch.nn.Sequential(*modules_lateral)
         
-    def forward(self, images):
+        self.dropout = torch.nn.Dropout(0.1)
+        self.merge_linear = torch.nn.Linear(2*resnet_frontal.fc.in_features, 2*resnet_frontal.fc.in_features)
+        self.feature_linear = torch.nn.Linear(2*resnet_frontal.fc.in_features, embed_size)
+        self.classfy_linear = torch.nn.Linear(2*resnet_frontal.fc.in_features, num_classes)
+        self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
+#         self.norm2d = torch.nn.BatchNorm2d(3, eps=1e-06)
+        
+    def forward(self, images_frontal, images_lateral):
         """Extract feature vectors from input images."""
-        resnet_output = self.resnet(images)
-        resnet_output = resnet_output.reshape(resnet_output.size(0), -1)
-        resnet_output = self.dropout(resnet_output)
+        # Frontal
+        resnet_output_frontal = self.resnet_frontal(images_frontal)
+        resnet_output_frontal = resnet_output_frontal.reshape(resnet_output_frontal.size(0), -1)
+        resnet_output_frontal = self.dropout(resnet_output_frontal)
+        # Lateral
+        resnet_output_lateral = self.resnet_lateral(images_lateral)
+        resnet_output_lateral = resnet_output_lateral.reshape(resnet_output_lateral.size(0), -1)
+        resnet_output_lateral = self.dropout(resnet_output_lateral)
+        # Merge
+        resnet_output = torch.cat([resnet_output_frontal, resnet_output_lateral], dim=-1)
+        resnet_output = self.merge_linear(resnet_output)
         features = self.norm(self.feature_linear(resnet_output))
         logits = self.classfy_linear(resnet_output)
         return logits, features
