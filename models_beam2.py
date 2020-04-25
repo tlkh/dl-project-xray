@@ -18,10 +18,11 @@ class EncoderCNN(torch.nn.Module):
         self.feature_linear = torch.nn.Linear(resnet.fc.in_features, embed_size)
         self.classfy_linear = torch.nn.Linear(resnet.fc.in_features, num_classes)
         self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
+        self.norm2d = torch.nn.BatchNorm2d(3, eps=1e-06)
         
     def forward(self, images):
         """Extract feature vectors from input images."""
-        resnet_output = self.resnet(images)
+        resnet_output = self.resnet(self.norm2d(images))
         resnet_output = resnet_output.reshape(resnet_output.size(0), -1)
         resnet_output = self.dropout(resnet_output)
         features = self.norm(self.feature_linear(resnet_output))
