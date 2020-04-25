@@ -40,7 +40,7 @@ class XRayDataset(torch.utils.data.Dataset):
             frontal_img_path, lateral_img_path = self.uid_to_images[uid]
             if frontal_img_path and lateral_img_path:
                 problem, finding, impression = self.reports[uid]
-                finding, impression = clean("SOS "+finding+" EOS"), clean("SOS "+impression+" EOS")
+                finding, impression = clean(finding), clean(impression)
                 self.tokenizer.index_words(finding)
                 self.tokenizer.index_words(impression)
                 self.frontal_images.append(frontal_img_path)
