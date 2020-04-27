@@ -4,13 +4,20 @@
 
 ## Setup
 
-Download necessary dataset and GloVe vectors from our provided S3 bucket (hosted until 1 June 2020)
+Download necessary dataset and GloVe vectors from our provided S3 bucket (hosted until 1 June 2020). For demo purposes, we also provide the results and trained weights from the training.
 
 ```bash
+# 14.1 GB
 wget https://deeplearning-mat.s3-ap-southeast-1.amazonaws.com/xray-dataset.zip
 unzip xray-dataset.zip
+
+# 519 MB
 wget https://deeplearning-mat.s3-ap-southeast-1.amazonaws.com/vectors.zip
 unzip vectors.zip
+
+# 351 MB
+wget https://deeplearning-mat.s3-ap-southeast-1.amazonaws.com/saved_exp.zip
+unzip saved_exp.zip
 ```
 
 Next, we need to install some required libraries.
