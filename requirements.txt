@@ -1,0 +1,5 @@
+streamlit
+nltk
+opencv-contrib-python
+scikit_learn
+fastprogress
