@@ -3,7 +3,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=4, type=int)
 parser.add_argument("--epochs", default=10, type=int)
 parser.add_argument("--pretrained", action="store_true")
-parser.add_argument("--outdir", default="./saved_exp/baseline_model/")
+parser.add_argument("--outdir", default="./saved_exp/revised_model/")
 args = parser.parse_args()
 
 import os
@@ -101,7 +101,7 @@ def main():
                                                               shuffle=True,
                                                               drop_last=True,
                                                               batch_size=config.batch_size,
-                                                              num_workers=config.batch_size//4)
+                                                              num_workers=config.batch_size)
     valid_dataset = data.XRayDataset(
         reports=valid_reports,
         transform=transforms.Compose([
@@ -119,7 +119,7 @@ def main():
                                                               shuffle=True,
                                                               drop_last=True,
                                                               batch_size=config.batch_size,
-                                                              num_workers=config.batch_size//4)
+                                                              num_workers=config.batch_size)
 
     num_classes = len(train_dataset.classes)
 
