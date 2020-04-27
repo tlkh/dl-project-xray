@@ -13,16 +13,16 @@ import torch
 from torchvision import transforms
 import apex
 import csv
-import dataset_word as data
-import models_attn as models
+import utils.dataset_word as data
+import model.models_attn as models
 import ast
 from sklearn.model_selection import train_test_split
 from fastprogress.fastprogress import master_bar, progress_bar
 from tqdm import trange
 import nltk
 from nltk.translate.bleu_score import sentence_bleu
-from evaluate import get_class_predictions
-from evaluate import evaluate_encoder_predictions
+from utils.evaluate import get_class_predictions
+from utils.evaluate import evaluate_encoder_predictions
 
 class Config:
     cleaned_reports = "./xray-dataset/cleaned_reports.csv"

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
-from config import config
+from utils.config import config
 import os
 import re
 import subprocess
@@ -63,7 +63,7 @@ def moses_multi_bleu(hypotheses, references, lowercase=True):
     if np.size(hypotheses) == 0:
         return np.float32(0.0)
 
-    multi_bleu_path = os.path.join(os.getcwd(), "multi-bleu.perl")
+    multi_bleu_path = os.path.join(os.getcwd(), "utils/multi-bleu.perl")
     os.chmod(multi_bleu_path, 0o755)
 
 

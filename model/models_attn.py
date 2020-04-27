@@ -1,8 +1,8 @@
 import torch
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
-from utils import share_embedding
-from config import config
+from utils.util import share_embedding
+from utils.config import config
 
 
 class EncoderCNN(torch.nn.Module):

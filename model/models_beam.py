@@ -1,15 +1,17 @@
 import torch
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
-from utils import share_embedding
-from config import config
-
+from utils.util import share_embedding
+from utils.config import config
+from utils.util import BeamSearchNode
+from queue import PriorityQueue
+import operator
 
 class EncoderCNN(torch.nn.Module):
-    def __init__(self, embed_size, num_classes, pretrained=True):
+    def __init__(self, embed_size, num_classes):
         """Load the pretrained ResNet and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        resnet = models.resnet18(pretrained=pretrained)
+        resnet = models.resnet18(pretrained=True)
         modules = list(resnet.children())[:-1]      # delete the last fc layer.
         self.resnet = torch.nn.Sequential(*modules)
         self.dropout = torch.nn.Dropout(0.1)
@@ -71,6 +73,9 @@ class DecoderRNN(torch.nn.Module):
         return sampled_ids
 
 
+    
+    
+    
 class DecoderRNN_Word(torch.nn.Module):
     def __init__(self, embed_size, hidden_size, vocab, num_layers, max_seq_length=64):
         """Set the hyper-parameters and build the layers."""
@@ -83,22 +88,25 @@ class DecoderRNN_Word(torch.nn.Module):
         self.dropout = torch.nn.Dropout(0.1)
         self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
         self.max_seg_length = max_seq_length
-        
+    
+    
     def forward(self, features, captions, lengths, prev_state):
         """Decode image feature vectors and generates captions."""
         embeddings = self.embed(captions)
         embeddings = self.norm(embeddings)
         embeddings = torch.cat((features.unsqueeze(1), embeddings), 1)
         embeddings = self.dropout(embeddings)
-        packed = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False) 
+        packed = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False)
         hiddens, state = self.lstm(packed, prev_state)
         rnn_out = self.dropout(hiddens[0])
         outputs = self.linear(rnn_out)
         return outputs, state
     
+    
     def zero_state(self, batch_size):
-        return (torch.zeros(self.num_layers, batch_size, self.hidden_size),
-                torch.zeros(self.num_layers, batch_size, self.hidden_size))
+        return (torch.zeros(self.num_layers, batch_size, self.hidden_size).to(config.device, non_blocking=True),
+                torch.zeros(self.num_layers, batch_size, self.hidden_size).to(config.device, non_blocking=True))
+    
     
     def sample(self, features, states=None):
         """Generate captions for given image features using greedy search."""
@@ -113,3 +121,110 @@ class DecoderRNN_Word(torch.nn.Module):
             inputs = inputs.unsqueeze(1)                         # inputs: (batch_size, 1, embed_size)
         sampled_ids = torch.stack(sampled_ids, 1)                # sampled_ids: (batch_size, max_seq_length)
         return sampled_ids
+    
+    
+    def forward_sample(self, decoder_input, prev_state=None, sos=False):
+        """Decode image feature vectors and generates captions."""
+        if not sos:
+            embeddings = self.embed(decoder_input)
+        else:
+            embeddings = decoder_input
+        embeddings = self.norm(embeddings)
+        embeddings = self.dropout(embeddings)
+        hiddens, state = self.lstm(embeddings, prev_state)
+        rnn_out = self.dropout(hiddens[0])
+        outputs = self.linear(rnn_out)
+        outputs = torch.log_softmax(outputs, dim=1)
+        return outputs, state
+    
+    def beam_decode(self, features, beam_width=10):
+        """
+        Code adapted from: https://github.com/budzianowski/PyTorch-Beam-Search-Decoding/blob/9f6b66f43d2e05175dabcc024f79e1d37a667070/decode_beam.py
+        Currently can only take a batch size of 1
+        """
+        topk = 1  # how many sentence do you want to generate
+        decoded_batch = []
+        for idx in range(1):
+            decoder_hidden = self.zero_state(batch_size=1)
+#             decoder_hidden = None
+            # Start with the start of the sentence token
+            decoder_input = torch.LongTensor([[config.SOS_idx]]).to(config.device)
+            
+            # Number of sentence to generate
+            endnodes = []
+            number_required = min((topk + 1), topk - len(endnodes))
+
+            # starting node -  hidden vector, previous node, word id, logp, length
+            node = BeamSearchNode(decoder_hidden, None, decoder_input, 0, 1)
+            nodes = PriorityQueue()
+            # start the queue
+            assert type(-node.eval()) == float
+            assert type(node) == BeamSearchNode
+            nodes.put( (-node.eval(), node) )
+            qsize = 1
+
+            sos = True
+            # start beam search
+            while True:
+                # give up when decoding takes too long
+                if qsize > 300: break
+
+                # fetch the best node
+                score, n = nodes.get()
+                decoder_input = n.wordid
+                decoder_hidden = n.h
+
+                if not sos:
+                    if n.wordid.item() == config.EOS_idx and n.prevNode != None:
+                        endnodes.append((score, n))
+                        # if we reached maximum # of sentences required
+                        if len(endnodes) >= number_required:
+                            break
+                        else:
+                            continue
+
+                decoder_output, decoder_hidden = self.forward_sample(decoder_input if not sos else features.unsqueeze(1), 
+                                                                     prev_state=decoder_hidden, sos=sos)
+                sos=False
+                # PUT HERE REAL BEAM SEARCH OF TOP
+                log_prob, indexes = torch.topk(decoder_output, beam_width)
+                nextnodes = []
+
+                for new_k in range(beam_width):
+                    decoded_t = indexes[0][new_k].view(1, -1)
+                    log_p = log_prob[0][new_k].item()
+
+                    node = BeamSearchNode(decoder_hidden, n, decoded_t, n.logp + log_p, n.leng + 1)
+                    score = -node.eval()
+                    nextnodes.append((score, node))
+
+                # put them into queue
+                for i in range(len(nextnodes)):
+                    score, nn = nextnodes[i]
+                    assert type(score) == float
+                    assert type(nn) == BeamSearchNode
+                    nodes.put((score, nn))
+                    # increase qsize
+                qsize += len(nextnodes) - 1
+
+            # choose nbest paths, back trace them
+            if len(endnodes) == 0:
+                endnodes = [nodes.get() for _ in range(topk)]
+
+            utterances = []
+            for score, n in sorted(endnodes, key=operator.itemgetter(0)):
+                utterance = []
+                utterance.append(n.wordid)
+                # back trace
+                while n.prevNode != None:
+                    n = n.prevNode
+                    utterance.append(n.wordid)
+
+                utterance = utterance[::-1]
+                utterances.append(utterance)
+
+            decoded_batch.append(utterances)
+
+        return decoded_batch
+
+

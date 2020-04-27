@@ -13,15 +13,15 @@ import torch
 from torchvision import transforms
 import apex
 import csv
-import data
-import models
+import utils.data as data
+import model.models as models
 import ast
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm, trange
 import nltk
 from nltk.translate.bleu_score import sentence_bleu
-from evaluate import get_class_predictions
-from evaluate import evaluate_encoder_predictions
+from utils.evaluate import get_class_predictions
+from utils.evaluate import evaluate_encoder_predictions
 
 num_epochs = args.epochs
 batch_size = args.batch_size

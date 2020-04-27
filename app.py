@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 import torch
 from torchvision import transforms
 import csv
-import dataset_word as data
-import models_attn as models
+import utils.dataset_word as data
+import model.models_attn as models
 import nltk
 from nltk.translate.bleu_score import sentence_bleu
 
