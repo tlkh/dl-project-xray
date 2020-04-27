@@ -1,6 +1,6 @@
 # Chest X-Ray Caption Generation
 
-50.003 DL Project 2020
+50.003 DL Project 2020 - [View YouTube video presentation/demo](https://youtu.be/JXhHxAIjzUE)
 
 ## Setup
 
