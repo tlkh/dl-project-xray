@@ -5,6 +5,7 @@ import PIL.ImageOps
 import torch
 from config import config
 import nltk
+import csv
 
 class XRayDataset(torch.utils.data.Dataset):
     def __init__(self, reports, transform=None, return_finding=False,
@@ -12,7 +13,6 @@ class XRayDataset(torch.utils.data.Dataset):
         self.transform = transform
         self.return_finding = return_finding
         if images_dir[-1] != "/": images_dir = images_dir + "/"
-        file_lines = [line.rstrip("\n") for line in open(file_list)][1:]
         self.reports = reports
         self.frontal_images = []
         self.lateral_images = []
@@ -24,17 +24,19 @@ class XRayDataset(torch.utils.data.Dataset):
         self.num_classes = len(self.classes)
         # build uid -> image mapping
         self.uid_to_images = {}
-        for line in file_lines:
-            line = line.split(",")
-            image_path = images_dir+line[1]
-            uid = str(int(line[0]))
-            if os.path.isfile(image_path):
-                try: self.uid_to_images[uid]
-                except: self.uid_to_images[uid] = [None, None]
-                if line[-1] == "Frontal":
-                    self.uid_to_images[uid][0] = image_path
-                elif line[-1] == "Lateral":
-                    self.uid_to_images[uid][1] = image_path
+        with open(file_list) as csv_file:
+            file_lines = csv.reader(csv_file)
+            for ln, line in enumerate(file_lines):
+                if ln > 0:
+                    image_path = images_dir+line[1]
+                    uid = str(int(line[0]))
+                    if os.path.isfile(image_path):
+                        try: self.uid_to_images[uid]
+                        except: self.uid_to_images[uid] = [None, None]
+                        if line[-1] == "Frontal":
+                            self.uid_to_images[uid][0] = image_path
+                        elif line[-1] == "Lateral":
+                            self.uid_to_images[uid][1] = image_path
         # build image -> report mapping
         self.tokenizer = Lang({config.UNK_idx: "UNK", config.PAD_idx: "PAD", config.EOS_idx: "EOS", config.SOS_idx: "SOS"})
         for uid in list(self.reports.keys()):

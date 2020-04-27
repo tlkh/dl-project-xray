@@ -65,6 +65,7 @@ def run_the_app():
     st.write("**Generated**:\n", generated)
     st.write("**BLEU score**:\n", str(bleu_score))
 
+@st.cache
 def load_dataset():
     def parse_list(input_str):    
         return ast.literal_eval(input_str)
@@ -137,8 +138,8 @@ def infer(image, num_classes, tokenizer):
                                 vocab_size=tokenizer.n_words,
                                 encoder_dim=2048,
                                 device=config.device).to(config.device)
-        encoder.load_state_dict(torch.load("./revised_model/encoder_word.pt"))
-        decoder.load_state_dict(torch.load("./revised_model/decoder_word.pt"))
+        encoder.load_state_dict(torch.load("./saved_exp/revised_model/encoder_word.pt"))
+        decoder.load_state_dict(torch.load("./saved_exp/revised_model/decoder_word.pt"))
         return encoder, decoder
     encoder, decoder = load_network(num_classes, tokenizer)
     
