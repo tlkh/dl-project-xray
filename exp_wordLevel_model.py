@@ -3,11 +3,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=4, type=int)
 parser.add_argument("--epochs", default=10, type=int)
 parser.add_argument("--pretrained", action="store_true")
-parser.add_argument("--outdir", default="./saved_exp/revised_model/")
-parser.add_argument("--test", action="store_false")
+parser.add_argument("--outdir", default="./saved_exp/wordLevel_model/")
+parser.add_argument("--test", action="store_true")
+
 args = parser.parse_args()
 
-import os
+import os;
 import numpy as np
 import pandas as pd
 import torch
@@ -15,15 +16,16 @@ from torchvision import transforms
 import apex
 import csv
 import utils.dataset_word as data
-import model.models_attn as models
+import model.models_beam as models
 import ast
-from sklearn.model_selection import train_test_split
-from fastprogress.fastprogress import master_bar, progress_bar
 from tqdm import trange
+from sklearn.model_selection import train_test_split
+# from tqdm.notebook import tqdm
+from fastprogress.fastprogress import master_bar, progress_bar
+# from config import config
 import nltk
 from nltk.translate.bleu_score import sentence_bleu
-from utils.evaluate import get_class_predictions
-from utils.evaluate import evaluate_encoder_predictions
+from utils.evaluate import *
 
 class Config:
     cleaned_reports = "./xray-dataset/cleaned_reports.csv"
@@ -42,6 +44,7 @@ class Config:
     learning_rate = 0.001
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 config = Config()
+
 
 num_epochs = args.epochs
 pretrained = args.pretrained
@@ -69,6 +72,7 @@ def create_report_splits(reports, seed=1337):
             output_reports[i][str(uid)] = reports[str(uid)]
             
     return output_reports
+
 
 def main():
     reports = {}
@@ -124,13 +128,8 @@ def main():
 
     num_classes = len(train_dataset.classes)
 
-    encoder = models.EncoderCNN(num_classes, pretrained=pretrained).to(config.device, memory_format=memory_format)
-    decoder = models.AttnDecoderRNN(attention_dim=config.hidden_dim,
-                                    embed_dim=config.emb_dim,
-                                    decoder_dim=config.hidden_dim,
-                                    vocab_size=train_dataset.tokenizer.n_words,
-                                    encoder_dim=2048,
-                                    device=config.device).to(config.device, memory_format=memory_format)
+    encoder = models.EncoderCNN(config.emb_dim, num_classes).to(config.device, memory_format=memory_format)
+    decoder = models.DecoderRNN_Word(config.emb_dim, config.hidden_dim, train_dataset.tokenizer, config.num_layers).to(config.device, memory_format=memory_format)
 
     classes_loss = torch.nn.BCEWithLogitsLoss()
     outputs_loss = torch.nn.CrossEntropyLoss()
@@ -149,27 +148,27 @@ def main():
             decoder.eval()
         running_c_loss = torch.Tensor([0.0])
         running_o_loss = torch.Tensor([0.0])
+        state_h, state_c = decoder.zero_state(batch_size)
         with torch.set_grad_enabled(train):
             for i, (images, class_labels, captions, lengths) in enumerate(progress_bar(dataloader)):
                 images = images.to(config.device, non_blocking=True).contiguous(memory_format=memory_format)
-                captions = captions.to(config.device, non_blocking=True)
-                class_labels = class_labels.to(config.device, non_blocking=True)
+                captions = captions[:,1:-1].to(config.device, non_blocking=True)
+                class_labels = class_labels.to(config.device, non_blocking=True) # remove the start of sentence and end of sentence symbol
+                lengths = [o-2 for o in lengths] # remove the start of sentence and end of sentence symbol
+                targets = torch.nn.utils.rnn.pack_padded_sequence(captions, lengths, batch_first=True, enforce_sorted=False)[0]
                 encoder.zero_grad()
                 decoder.zero_grad()
                 logits, features = encoder(images)
-                c_loss = 10*classes_loss(logits, class_labels)
-
-                scores, caps_sorted, decode_lengths, alphas = decoder(features, captions, lengths)
-                scores = torch.nn.utils.rnn.pack_padded_sequence(scores, decode_lengths, batch_first=True, enforce_sorted=False)[0]
-                targets = captions[:, 1:]
-                targets = torch.nn.utils.rnn.pack_padded_sequence(targets, decode_lengths, batch_first=True, enforce_sorted=False)[0]
-
-                o_loss = outputs_loss(scores, targets)
+                c_loss = classes_loss(logits, class_labels)
+                outputs, (state_h, state_c) = decoder(features, captions, lengths, (state_h, state_c))
+                o_loss = outputs_loss(outputs, targets)
                 if train:
                     with apex.amp.scale_loss(c_loss, optimizer) as scaled_loss:
                         scaled_loss.backward(retain_graph=True)
                     with apex.amp.scale_loss(o_loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
+                    state_h = state_h.detach()
+                    state_c = state_c.detach()
                     optimizer.step()
                 running_c_loss += c_loss
                 running_o_loss += o_loss
@@ -178,7 +177,6 @@ def main():
         return c_loss, o_loss
 
     batch_size = config.batch_size
-    
     if not args.test:
         print("Start training")
 
@@ -244,20 +242,22 @@ def main():
         with torch.set_grad_enabled(False):
             for index in trange(0, dataset_len):
                 image, problems, impression = dataloader.dataset.__getitem__(index)
-                image_tensor = image.unsqueeze(0).cuda()
+                image_tensor = image.unsqueeze(0).to(device)
                 logits, features = encoder(image_tensor)
-                seed = []
-                seed = torch.from_numpy(train_dataset.tokenizer.encode(seed)[:-1]).unsqueeze(0).cuda()
-                predictions, seed, decode_lengths, alphas = decoder.sample(features, seed, [32, ])
-                sampled_ids = list(predictions[0].cpu().numpy())
-                original = train_dataset.tokenizer.decode(impression[1:]).split("EOS")[0]
-                generated = train_dataset.tokenizer.decode(sampled_ids).split("EOS")[0]
+#                 seed = []
+#                 seed = torch.from_numpy(train_dataset.tokenizer.encode(seed)).unsqueeze(0).cuda()
+#                 predictions, seed, decode_lengths, alphas = decoder.sample(features, seed, [32, ])
+#                 sampled_ids = list(predictions[0].cpu().numpy())
+                sampled_ids = decoder.beam_decode(features)
+                sampled_ids = [i.detach().cpu().numpy() for i in sampled_ids[0][0] ][1:]
+                original = train_dataset.tokenizer.decode(impression[1:-1])
+                generated = train_dataset.tokenizer.decode(sampled_ids)
                 reference = [nltk.word_tokenize(original)]
                 candidate = nltk.word_tokenize(generated)
                 bleu_score = sentence_bleu(reference, candidate, weights=(1, 0, 0, 0))
                 running_bleu += bleu_score
-        final_bleu_score = running_bleu/dataset_len
-        bleu_scores.append(final_bleu_score)
+            bleu_score = running_bleu/dataset_len
+            bleu_scores.append(bleu_score)
             
     print("* train/valid BLEU-1 scores", bleu_scores)
 

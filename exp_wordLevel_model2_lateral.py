@@ -3,27 +3,31 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=4, type=int)
 parser.add_argument("--epochs", default=10, type=int)
 parser.add_argument("--pretrained", action="store_true")
-parser.add_argument("--outdir", default="./saved_exp/revised_model/")
-parser.add_argument("--test", action="store_false")
+parser.add_argument("--outdir", default="./saved_exp/wordLevel_model2_lateral/")
+parser.add_argument("--test", action="store_true")
 args = parser.parse_args()
 
-import os
+
+import os;
 import numpy as np
 import pandas as pd
 import torch
 from torchvision import transforms
 import apex
 import csv
-import utils.dataset_word as data
-import model.models_attn as models
+import utils.dataset_lateral as data
+import model.models_beam2_lateral as models
 import ast
-from sklearn.model_selection import train_test_split
-from fastprogress.fastprogress import master_bar, progress_bar
 from tqdm import trange
+from sklearn.model_selection import train_test_split
+# from tqdm.notebook import tqdm
+from fastprogress.fastprogress import master_bar, progress_bar
+# from config import config
 import nltk
 from nltk.translate.bleu_score import sentence_bleu
-from utils.evaluate import get_class_predictions
+from utils.evaluate import get_class_predictions_lateral as get_class_predictions
 from utils.evaluate import evaluate_encoder_predictions
+
 
 class Config:
     cleaned_reports = "./xray-dataset/cleaned_reports.csv"
@@ -42,6 +46,7 @@ class Config:
     learning_rate = 0.001
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 config = Config()
+
 
 num_epochs = args.epochs
 pretrained = args.pretrained
@@ -124,13 +129,8 @@ def main():
 
     num_classes = len(train_dataset.classes)
 
-    encoder = models.EncoderCNN(num_classes, pretrained=pretrained).to(config.device, memory_format=memory_format)
-    decoder = models.AttnDecoderRNN(attention_dim=config.hidden_dim,
-                                    embed_dim=config.emb_dim,
-                                    decoder_dim=config.hidden_dim,
-                                    vocab_size=train_dataset.tokenizer.n_words,
-                                    encoder_dim=2048,
-                                    device=config.device).to(config.device, memory_format=memory_format)
+    encoder = models.EncoderCNN(config.emb_dim, num_classes).to(config.device, memory_format=memory_format)
+    decoder = models.DecoderRNN_Word(config.emb_dim, config.hidden_dim, train_dataset.tokenizer, config.num_layers).to(config.device, memory_format=memory_format)
 
     classes_loss = torch.nn.BCEWithLogitsLoss()
     outputs_loss = torch.nn.CrossEntropyLoss()
@@ -149,27 +149,28 @@ def main():
             decoder.eval()
         running_c_loss = torch.Tensor([0.0])
         running_o_loss = torch.Tensor([0.0])
+        state_h, state_c = decoder.zero_state(batch_size)
         with torch.set_grad_enabled(train):
-            for i, (images, class_labels, captions, lengths) in enumerate(progress_bar(dataloader)):
-                images = images.to(config.device, non_blocking=True).contiguous(memory_format=memory_format)
+            for i, (images_frontal, images_lateral, class_labels, captions, lengths) in enumerate(progress_bar(dataloader)):
+                images_frontal = images_frontal.to(config.device, non_blocking=True).contiguous(memory_format=memory_format)
+                images_lateral = images_lateral.to(config.device, non_blocking=True).contiguous(memory_format=memory_format)
                 captions = captions.to(config.device, non_blocking=True)
                 class_labels = class_labels.to(config.device, non_blocking=True)
+                lengths = [o-1 for o in lengths]
+                targets = torch.nn.utils.rnn.pack_padded_sequence(captions[:,1:], lengths, batch_first=True, enforce_sorted=False)[0]
                 encoder.zero_grad()
                 decoder.zero_grad()
-                logits, features = encoder(images)
-                c_loss = 10*classes_loss(logits, class_labels)
-
-                scores, caps_sorted, decode_lengths, alphas = decoder(features, captions, lengths)
-                scores = torch.nn.utils.rnn.pack_padded_sequence(scores, decode_lengths, batch_first=True, enforce_sorted=False)[0]
-                targets = captions[:, 1:]
-                targets = torch.nn.utils.rnn.pack_padded_sequence(targets, decode_lengths, batch_first=True, enforce_sorted=False)[0]
-
-                o_loss = outputs_loss(scores, targets)
+                logits, features = encoder(images_frontal, images_lateral)                
+                c_loss = classes_loss(logits, class_labels)
+                outputs, (state_h, state_c) = decoder(features, captions[:,:-1], lengths, (state_h, state_c))
+                o_loss = outputs_loss(outputs, targets)
                 if train:
                     with apex.amp.scale_loss(c_loss, optimizer) as scaled_loss:
                         scaled_loss.backward(retain_graph=True)
                     with apex.amp.scale_loss(o_loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
+                    state_h = state_h.detach()
+                    state_c = state_c.detach()
                     optimizer.step()
                 running_c_loss += c_loss
                 running_o_loss += o_loss
@@ -181,7 +182,7 @@ def main():
     
     if not args.test:
         print("Start training")
-
+    
         history = {
             "train_c_loss": [],
             "train_o_loss": [],
@@ -243,21 +244,25 @@ def main():
         dataset_len = len(dataloader.dataset)
         with torch.set_grad_enabled(False):
             for index in trange(0, dataset_len):
-                image, problems, impression = dataloader.dataset.__getitem__(index)
-                image_tensor = image.unsqueeze(0).cuda()
-                logits, features = encoder(image_tensor)
-                seed = []
-                seed = torch.from_numpy(train_dataset.tokenizer.encode(seed)[:-1]).unsqueeze(0).cuda()
-                predictions, seed, decode_lengths, alphas = decoder.sample(features, seed, [32, ])
-                sampled_ids = list(predictions[0].cpu().numpy())
-                original = train_dataset.tokenizer.decode(impression[1:]).split("EOS")[0]
-                generated = train_dataset.tokenizer.decode(sampled_ids).split("EOS")[0]
+                image_frontal, image_lateral, _, impression = train_dataset.__getitem__(index)
+                image_tensor_frontal = image_frontal.unsqueeze(0).to(config.device)
+                image_tensor_lateral = image_lateral.unsqueeze(0).to(config.device)
+                logits, feature = encoder(image_tensor_frontal, image_tensor_lateral)
+#                 seed = []
+#                 seed = torch.from_numpy(train_dataset.tokenizer.encode(seed)).unsqueeze(0).cuda()
+#                 predictions, seed, decode_lengths, alphas = decoder.sample(features, seed, [32, ])
+#                 sampled_ids = list(predictions[0].cpu().numpy())
+                # sampled_ids = decoder.beam_decode(feature)
+                sampled_ids = decoder.greedy_decode(feature)
+                sampled_ids = [i for i in sampled_ids]
+                original = train_dataset.tokenizer.decode(impression[1:-1])
+                generated = train_dataset.tokenizer.decode(sampled_ids[:-1])
                 reference = [nltk.word_tokenize(original)]
                 candidate = nltk.word_tokenize(generated)
                 bleu_score = sentence_bleu(reference, candidate, weights=(1, 0, 0, 0))
                 running_bleu += bleu_score
-        final_bleu_score = running_bleu/dataset_len
-        bleu_scores.append(final_bleu_score)
+            bleu_score = running_bleu/dataset_len
+            bleu_scores.append(bleu_score)
             
     print("* train/valid BLEU-1 scores", bleu_scores)
 

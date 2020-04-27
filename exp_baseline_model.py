@@ -4,6 +4,7 @@ parser.add_argument("--batch_size", default=4, type=int)
 parser.add_argument("--epochs", default=10, type=int)
 parser.add_argument("--pretrained", action="store_true")
 parser.add_argument("--outdir", default="./saved_exp/baseline_model/")
+parser.add_argument("--test", action="store_true")
 args = parser.parse_args()
 
 import os
@@ -156,48 +157,48 @@ def main():
         o_loss = float(running_o_loss.item()/total_step)
 
         return c_loss, o_loss
+    if not arg.test:
+        print("Start training")
 
-    print("Start training")
-    
-    history = {
-        "train_c_loss": [],
-        "train_o_loss": [],
-        "valid_c_loss": [],
-        "valid_o_loss": []
-    }
-    
-    best_loss = 100
+        history = {
+            "train_c_loss": [],
+            "train_o_loss": [],
+            "valid_c_loss": [],
+            "valid_o_loss": []
+        }
 
-    for epoch in range(num_epochs):
-        print("\nEpoch", epoch+1, "/", num_epochs, ":\n")
-        
-        train_c_loss, train_o_loss = train_one_epoch(train_dataloader, batch_size, encoder, decoder, classes_loss, outputs_loss, optimizer, train=True)
-        print("* train_loss -", round(train_c_loss,3),round(train_o_loss,3), "- perplexity -", round(np.exp(train_o_loss),3))
-        history["train_c_loss"].append(train_c_loss)
-        history["train_o_loss"].append(train_o_loss)
-        
-        valid_c_loss, valid_o_loss = train_one_epoch(valid_dataloader, batch_size, encoder, decoder, classes_loss, outputs_loss, optimizer, train=False)
-        print("* valid_loss -", round(valid_c_loss,3),round(valid_o_loss,3), "- perplexity -", round(np.exp(valid_o_loss),3))
-        history["valid_c_loss"].append(valid_c_loss)
-        history["valid_o_loss"].append(valid_o_loss)
-        
-        current_valid_loss = valid_o_loss
-        if current_valid_loss < best_loss:
-            print("* best loss, saving weights")
-            best_loss = current_valid_loss
-            torch.save(encoder.state_dict(), outdir+"encoder_word.pt")
-            torch.save(decoder.state_dict(), outdir+"decoder_word.pt")
-        
-    print("Save history to CSV file")
-    df = pd.DataFrame(list(zip(history["train_c_loss"],
-                               history["train_o_loss"],
-                               history["valid_c_loss"],
-                               history["valid_o_loss"])),
-                      columns =["train_c_loss",
-                                "train_o_loss",
-                                "valid_c_loss",
-                                "valid_o_loss"])
-    df.to_csv(outdir+"history.csv")
+        best_loss = 100
+
+        for epoch in range(num_epochs):
+            print("\nEpoch", epoch+1, "/", num_epochs, ":\n")
+
+            train_c_loss, train_o_loss = train_one_epoch(train_dataloader, batch_size, encoder, decoder, classes_loss, outputs_loss, optimizer, train=True)
+            print("* train_loss -", round(train_c_loss,3),round(train_o_loss,3), "- perplexity -", round(np.exp(train_o_loss),3))
+            history["train_c_loss"].append(train_c_loss)
+            history["train_o_loss"].append(train_o_loss)
+
+            valid_c_loss, valid_o_loss = train_one_epoch(valid_dataloader, batch_size, encoder, decoder, classes_loss, outputs_loss, optimizer, train=False)
+            print("* valid_loss -", round(valid_c_loss,3),round(valid_o_loss,3), "- perplexity -", round(np.exp(valid_o_loss),3))
+            history["valid_c_loss"].append(valid_c_loss)
+            history["valid_o_loss"].append(valid_o_loss)
+
+            current_valid_loss = valid_o_loss
+            if current_valid_loss < best_loss:
+                print("* best loss, saving weights")
+                best_loss = current_valid_loss
+                torch.save(encoder.state_dict(), outdir+"encoder_word.pt")
+                torch.save(decoder.state_dict(), outdir+"decoder_word.pt")
+
+        print("Save history to CSV file")
+        df = pd.DataFrame(list(zip(history["train_c_loss"],
+                                   history["train_o_loss"],
+                                   history["valid_c_loss"],
+                                   history["valid_o_loss"])),
+                          columns =["train_c_loss",
+                                    "train_o_loss",
+                                    "valid_c_loss",
+                                    "valid_o_loss"])
+        df.to_csv(outdir+"history.csv")
     
     print("Load weights and run mAP and BLEU eval")
     

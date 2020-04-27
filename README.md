@@ -63,6 +63,12 @@ Training for CNN (lateral+frontal images) + LSTM word-level model, beam search d
 python3 exp_wordLevel_model2_lateral.py
 ```
 
+## Run Testing code
+Simply add `--test` like this:
+```shell
+python3 exp_baseline_model.py --test
+```
+
 ## Contributors
 
 * Timothy Liu Kaihui (1002653)
