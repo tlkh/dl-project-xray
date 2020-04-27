@@ -1,3 +1,11 @@
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--batch_size", default=4, type=int)
+parser.add_argument("--epochs", default=10, type=int)
+parser.add_argument("--pretrained", action="store_true")
+parser.add_argument("--outdir", default="./saved_exp/baseline_model/")
+args = parser.parse_args()
+
 import os
 import numpy as np
 import pandas as pd
@@ -29,15 +37,16 @@ class Config:
     emb_dim = 300
     hidden_dim = 512
     num_layers = 1
-    batch_size = 16
+    batch_size = args.batch_size
     learning_rate = 0.001
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 config = Config()
 
-num_epochs = 20
-pretrained = False
+num_epochs = args.epochs
+pretrained = args.pretrained
 memory_format = torch.channels_last
-outdir = "./saved_exp/revised_model/"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+outdir = args.outdir
 os.makedirs(outdir, exist_ok=True)
 
 def parse_list(input_str):    

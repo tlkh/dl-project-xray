@@ -1,3 +1,11 @@
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--batch_size", default=4, type=int)
+parser.add_argument("--epochs", default=10, type=int)
+parser.add_argument("--pretrained", action="store_true")
+parser.add_argument("--outdir", default="./saved_exp/baseline_model/")
+args = parser.parse_args()
+
 import os
 import numpy as np
 import pandas as pd
@@ -15,16 +23,16 @@ from nltk.translate.bleu_score import sentence_bleu
 from evaluate import get_class_predictions
 from evaluate import evaluate_encoder_predictions
 
-num_epochs = 10
-batch_size = 4
+num_epochs = args.epochs
+batch_size = args.batch_size
 embed_size = 128
 hidden_size = 128
 num_layers = 3
 learning_rate = 0.001
-pretrained = True
+pretrained = args.pretrained
 memory_format = torch.channels_last
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-outdir = "./saved_exp/baseline_model/"
+outdir = args.outdir
 os.makedirs(outdir, exist_ok=True)
 
 def parse_list(input_str):    
