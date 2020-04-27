@@ -25,7 +25,7 @@ Next, we need to install some required libraries.
 streamlit run app.py
 ```
 
-![GUI screenshot](images/app.png)
+![GUI screenshot](assets/app.png)
 
 ## Run Training Code
 
