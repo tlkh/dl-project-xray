@@ -40,7 +40,7 @@ def run_the_app():
     train_dataset, valid_dataset, test_dataset, num_classes, tokenizer = load_dataset()
     st.sidebar.subheader("\nControls")
     option = st.sidebar.selectbox("Choose between training, validation and test set:",
-                          ("Train", "Validation", "Test"))
+                                  ("Train", "Validation", "Test"))
     if option == "Train":
         dataset = train_dataset
     elif option == "Validation":
@@ -50,8 +50,10 @@ def run_the_app():
     selected_index = st.sidebar.slider("Pick an X-ray image from the " + option + " dataset", 0, len(dataset)-1, 0)
     image, _, impression = dataset.__getitem__(selected_index)
     image_numpy = np.moveaxis(image.numpy(), 0, -1)
+    model_type = st.sidebar.selectbox("Choose between model trained from scratch or fine-tuned from ImageNet:",
+                                      ("Scratch", "ImageNet"))
     show_attention = st.sidebar.checkbox("Show Attention Map")
-    preds, alpha = infer(image, num_classes, tokenizer)
+    preds, alpha = infer(image, num_classes, tokenizer, model_type)
     if show_attention:
         image_numpy = image_numpy*0.2 + alpha*0.8
     image_numpy = np.clip(image_numpy, 0.0, 1.0)
@@ -128,9 +130,21 @@ def load_dataset():
     return train_dataset, valid_dataset, test_dataset, len(train_dataset.classes), train_dataset.tokenizer
     
 
-def infer(image, num_classes, tokenizer):
+def infer(image, num_classes, tokenizer, model_type):
     @st.cache(allow_output_mutation=True)
-    def load_network(num_classes, tokenizer):
+    def load_pretrained_network(num_classes, tokenizer):
+        encoder = models.EncoderCNN(num_classes).to(config.device)
+        decoder = models.AttnDecoderRNN(attention_dim=config.hidden_dim,
+                                embed_dim=config.emb_dim,
+                                decoder_dim=config.hidden_dim,
+                                vocab_size=tokenizer.n_words,
+                                encoder_dim=2048,
+                                device=config.device).to(config.device)
+        encoder.load_state_dict(torch.load("./saved_exp/revised_model_pretrained/encoder_word.pt"))
+        decoder.load_state_dict(torch.load("./saved_exp/revised_model_pretrained/decoder_word.pt"))
+        return encoder, decoder
+    @st.cache(allow_output_mutation=True)
+    def load_scratch_network(num_classes, tokenizer):
         encoder = models.EncoderCNN(num_classes).to(config.device)
         decoder = models.AttnDecoderRNN(attention_dim=config.hidden_dim,
                                 embed_dim=config.emb_dim,
@@ -141,7 +155,10 @@ def infer(image, num_classes, tokenizer):
         encoder.load_state_dict(torch.load("./saved_exp/revised_model/encoder_word.pt"))
         decoder.load_state_dict(torch.load("./saved_exp/revised_model/decoder_word.pt"))
         return encoder, decoder
-    encoder, decoder = load_network(num_classes, tokenizer)
+    if model_type == "Scratch":
+        encoder, decoder = load_scratch_network(num_classes, tokenizer)
+    else:
+        encoder, decoder = load_pretrained_network(num_classes, tokenizer)
     
     image_tensor = image.unsqueeze(0).to(config.device)
     logits, features = encoder(image_tensor)
