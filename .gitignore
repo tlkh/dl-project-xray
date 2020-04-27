@@ -3,6 +3,7 @@
 vectors/*
 save/*
 saved_exp/*
+xray-dataset/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
