@@ -245,7 +245,7 @@ def main():
                 image_tensor = image.unsqueeze(0).cuda()
                 logits, features = encoder(image_tensor)
                 seed = []
-                seed = torch.from_numpy(train_dataset.tokenizer.encode(seed)).unsqueeze(0).cuda()
+                seed = torch.from_numpy(train_dataset.tokenizer.encode(seed)[:-1]).unsqueeze(0).cuda()
                 predictions, seed, decode_lengths, alphas = decoder.sample(features, seed, [32, ])
                 sampled_ids = list(predictions[0].cpu().numpy())
                 original = train_dataset.tokenizer.decode(impression[1:]).split("EOS")[0]
@@ -254,8 +254,8 @@ def main():
                 candidate = nltk.word_tokenize(generated)
                 bleu_score = sentence_bleu(reference, candidate, weights=(1, 0, 0, 0))
                 running_bleu += bleu_score
-            bleu_score = running_bleu/dataset_len
-            bleu_scores.append(bleu_score)
+        final_bleu_score = running_bleu/dataset_len
+        bleu_scores.append(final_bleu_score)
             
     print("* train/valid BLEU-1 scores", bleu_scores)
 
