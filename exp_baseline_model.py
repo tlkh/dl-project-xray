@@ -211,6 +211,8 @@ def main():
     recall, precision, AP, valid_mAP = evaluate_encoder_predictions(y_true, y_pred)
 
     print("* train mAP -", round(train_mAP, 3), "- valid mAP -", round(valid_mAP, 3))
+    
+    bleu_scores = []
 
     for name, dataloader in zip(["train", "valid"],[train_dataloader,valid_dataloader]):
         encoder.eval()
@@ -231,7 +233,9 @@ def main():
                 bleu_score = sentence_bleu(reference, candidate, weights=(1, 0, 0, 0))
                 running_bleu += bleu_score
             bleu_score = running_bleu/dataset_len
-            print("*", name, "BLEU-1 score:", bleu_score)
+            bleu_scores.append(bleu_score)
+            
+    print("* train/valid BLEU-1 scores", bleu_scores)
 
 
 if __name__ == "__main__":
