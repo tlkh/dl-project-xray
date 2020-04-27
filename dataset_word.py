@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from PIL import Image
+import PIL.ImageOps  
 import torch
 from config import config
 import nltk
@@ -126,6 +127,11 @@ class Lang:
             self.word2count[word] += 1
 
     def encode(self, text):
+        for i, t in enumerate(text):
+            try:
+                _ = self.word2index[t]
+            except KeyError:
+                text[i] = "UNK"
         return np.asarray([config.SOS_idx] + [self.word2index[o] for o in text] + [config.EOS_idx], dtype="int")
 
     def decode(self, text):

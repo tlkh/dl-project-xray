@@ -47,7 +47,7 @@ class XRayDataset(torch.utils.data.Dataset):
                 self.impressions.append(impression)
                 self.vocab += new_vocab
         
-        self.vocab = list(set(self.vocab))
+        self.vocab = list(set(self.vocab)) + [">", "<"] # SOS and EOS tokens
         self.tokenizer = Tokenizer(char_set=self.vocab)
         
     def __len__(self):
@@ -92,6 +92,7 @@ class Tokenizer(object):
         char_set.sort()
         self.char_set = char_set
     def encode(self, text, seq_len=None):
+        text = "> "+text+" <"
         return np.asarray([self.char_set.index(t) for t in text], dtype="int")
     def decode(self, sequence):
         return "".join([self.char_set[i] for i in sequence]).strip()

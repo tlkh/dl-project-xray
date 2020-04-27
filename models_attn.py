@@ -6,18 +6,17 @@ from config import config
 
 
 class EncoderCNN(torch.nn.Module):
-    def __init__(self, embed_size, num_classes):
+    def __init__(self, num_classes, pretrained=True):
         """Load the pretrained ResNet and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        resnet = models.inception_v3(pretrained=True)
+        resnet = models.resnet50(pretrained=pretrained)
+        outdim = 2048
         modules = list(resnet.children())[:-2]
         self.resnet = torch.nn.Sequential(*modules)
-        self.dropout = torch.nn.Dropout(0.1)
-        self.feature_linear = torch.nn.Conv2d(512, embed_size, kernel_size=(1, 1))
-        self.norm = torch.nn.LayerNorm(embed_size, eps=1e-06)
         # classifier
         self.global_pool = torch.nn.AdaptiveAvgPool2d(output_size=(1, 1))
-        self.classify_linear = torch.nn.Linear(512, num_classes)
+        self.classify_linear = torch.nn.Linear(outdim, num_classes)
+        self.dropout = torch.nn.Dropout(0.1)
         
     def forward(self, images):
         """Extract feature vectors from input images."""

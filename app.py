@@ -9,6 +9,8 @@ from torchvision import transforms
 import csv
 import dataset_word as data
 import models_attn as models
+import nltk
+from nltk.translate.bleu_score import sentence_bleu
 
 class Config:
     cleaned_reports = "./xray-dataset/cleaned_reports.csv"
@@ -21,8 +23,8 @@ class Config:
     EOS_idx = 2
     SOS_idx = 3
     emb_dim = 300
-    hidden_dim = 256
-    num_layers = 3
+    hidden_dim = 512
+    num_layers = 1
     batch_size = 1
     learning_rate = 0.001
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,15 +56,21 @@ def run_the_app():
         image_numpy = image_numpy*0.2 + alpha*0.8
     image_numpy = np.clip(image_numpy, 0.0, 1.0)
     st.image(image_numpy, caption=option+" X-Ray image "+str(selected_index), width=480)
-    st.write("**Original**:\n", tokenizer.decode(impression[1:-1]))
-    st.write("**Generated**:\n", tokenizer.decode(preds).split("EOS")[0])
+    original = tokenizer.decode(impression[1:-1])
+    generated = tokenizer.decode(preds).split("EOS")[0]
+    reference = [nltk.word_tokenize(original)]
+    candidate = nltk.word_tokenize(generated)
+    bleu_score = sentence_bleu(reference, candidate, weights=(1, 0, 0, 0))
+    st.write("**Original**:\n", original)
+    st.write("**Generated**:\n", generated)
+    st.write("**BLEU score**:\n", str(bleu_score))
 
 def load_dataset():
     def parse_list(input_str):    
         return ast.literal_eval(input_str)
     reports = {}
     with open(config.cleaned_reports) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
+        csv_reader = csv.reader(csv_file, delimiter=",")
         line_count = 0
         for row in csv_reader:
             if line_count == 0:
@@ -89,8 +97,8 @@ def load_dataset():
     train_dataset = data.XRayDataset(
         reports=train_reports,
         transform=transforms.Compose([
-            transforms.Resize(2048),
-            transforms.CenterCrop((2048,2048)),
+            transforms.Resize(299),
+            transforms.CenterCrop((299,299)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
@@ -99,8 +107,8 @@ def load_dataset():
     valid_dataset = data.XRayDataset(
         reports=valid_reports,
         transform=transforms.Compose([
-            transforms.Resize(2048),
-            transforms.CenterCrop((2048,2048)),
+            transforms.Resize(299),
+            transforms.CenterCrop((299,299)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
@@ -109,8 +117,8 @@ def load_dataset():
     test_dataset = data.XRayDataset(
         reports=test_reports,
         transform=transforms.Compose([
-            transforms.Resize(2048),
-            transforms.CenterCrop((2048,2048)),
+            transforms.Resize(299),
+            transforms.CenterCrop((299,299)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
@@ -122,15 +130,15 @@ def load_dataset():
 def infer(image, num_classes, tokenizer):
     @st.cache(allow_output_mutation=True)
     def load_network(num_classes, tokenizer):
-        encoder = models.EncoderCNN(config.emb_dim, num_classes).to(config.device)
-        decoder = models.AttnDecoderRNN(attention_dim=config.hidden_dim*2,
+        encoder = models.EncoderCNN(num_classes).to(config.device)
+        decoder = models.AttnDecoderRNN(attention_dim=config.hidden_dim,
                                 embed_dim=config.emb_dim,
                                 decoder_dim=config.hidden_dim,
                                 vocab_size=tokenizer.n_words,
-                                encoder_dim=512,
+                                encoder_dim=2048,
                                 device=config.device).to(config.device)
-        encoder.load_state_dict(torch.load('save/encoder_word.pt'))
-        decoder.load_state_dict(torch.load('save/decoder_word.pt'))
+        encoder.load_state_dict(torch.load("./revised_model/encoder_word.pt"))
+        decoder.load_state_dict(torch.load("./revised_model/decoder_word.pt"))
         return encoder, decoder
     encoder, decoder = load_network(num_classes, tokenizer)
     
@@ -140,9 +148,9 @@ def infer(image, num_classes, tokenizer):
     seed = []
     seed = torch.from_numpy(tokenizer.encode(seed)).unsqueeze(0).cuda()
     predictions, seed, decode_lengths, alphas = decoder.sample(features, seed, [32, ])
-    alphas = alphas.reshape([1, 31, 64, 64])
+    alphas = alphas.reshape([1, 31, 10, 10])
     alphas = torch.sum(alphas, 1).squeeze(0)
-    alphas = cv2.resize(alphas.detach().cpu().numpy(), (2048,2048))
+    alphas = cv2.resize(alphas.detach().cpu().numpy(), (299,299))
     alphas = np.clip(alphas, 0.0, 1.0)
     alphas = cv2.cvtColor(alphas, cv2.COLOR_GRAY2RGB)
     alphas[:,:,1] = 0

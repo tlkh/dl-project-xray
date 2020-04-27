@@ -49,7 +49,7 @@ def share_embedding(vocab, pretrain=True):
 
 """BLEU metric implementation.
 """
-def moses_multi_bleu(hypotheses, references, lowercase=False):
+def moses_multi_bleu(hypotheses, references, lowercase=True):
     """Calculate the bleu score for hypotheses and references
     using the MOSES ulti-bleu.perl script.
     Args:

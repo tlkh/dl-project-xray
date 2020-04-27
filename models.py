@@ -6,10 +6,10 @@ from config import config
 
 
 class EncoderCNN(torch.nn.Module):
-    def __init__(self, embed_size, num_classes):
+    def __init__(self, embed_size, num_classes, pretrained=True):
         """Load the pretrained ResNet and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        resnet = models.resnet18(pretrained=True)
+        resnet = models.resnet18(pretrained=pretrained)
         modules = list(resnet.children())[:-1]      # delete the last fc layer.
         self.resnet = torch.nn.Sequential(*modules)
         self.dropout = torch.nn.Dropout(0.1)
