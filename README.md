@@ -1,21 +1,20 @@
 # dl-project-xray
+
 DL Project 2020
 
-
 ## Installation
-Download data from Amazon and unzip the file in xray-dataset
-```bash
-mkdir xray-dataset
-wget 
-```
 
-make a folder `vectors` and download glove pretrained embedding from Amazon in that folder.
+Download necessary dataset and GloVe vectors from our provided S3 bucket
+
 ```bash
-mkdir vectors
-wget 
+wget https://deeplearning-mat.s3-ap-southeast-1.amazonaws.com/xray-dataset.zip
+unzip xray-dataset.zip
+wget https://deeplearning-mat.s3-ap-southeast-1.amazonaws.com/vectors.zip
+unzip vectors.zip
 ```
 
 ### library required
+
 [apex](https://github.com/NVIDIA/apex)
 
 ## Run code
